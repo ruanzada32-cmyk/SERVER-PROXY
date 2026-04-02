@@ -40,11 +40,19 @@ def is_admin(update: Update) -> bool:
 
 def api_get(endpoint: str, params: dict) -> dict:
     try:
+        # SEMPRE incluir a API_KEY mestra em todas as chamadas
         params["key"] = API_KEY
+        logger.info(f"Chamando API: {endpoint} com params: {params}")
         r = requests.get(f"{API_BASE}{endpoint}", params=params, timeout=10)
         r.raise_for_status()
-        return {"ok": True, "data": r.json() if r.text else {}, "raw": r.text}
+        data = r.json() if r.text else {}
+        logger.info(f"Resposta API: {data}")
+        
+        # A API retorna "status": "success" ou "status": "failed..."
+        is_ok = data.get("status") == "success"
+        return {"ok": is_ok, "data": data, "raw": r.text}
     except requests.exceptions.RequestException as e:
+        logger.error(f"Erro na chamada API: {e}")
         return {"ok": False, "error": str(e)}
 
 def generate_random_key():
@@ -173,13 +181,16 @@ async def gerar_dias(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     erros = []
 
     for _ in range(qtd):
-        nome_key = generate_random_key()
-        resp = api_get("/generate", {"key": nome_key, "days": dias})
+        # Nota: A API gera uma key aleatória própria, não aceita o nome que enviamos.
+        # Mas enviamos o parâmetro 'key' como a API_KEY mestra para autorizar.
+        resp = api_get("/generate", {"days": dias})
         
         if resp["ok"]:
-            keys_geradas.append(nome_key)
+            # A API retorna a key gerada no campo "key"
+            nova_key = resp["data"].get("key")
+            keys_geradas.append(nova_key)
         else:
-            erros.append(f"Erro ao gerar {nome_key}: {resp['error']}")
+            erros.append(f"Erro: {resp['data'].get('status', 'Falha desconhecida')}")
 
     msg = (
         "╔══════════════════════════╗\n"
@@ -195,7 +206,7 @@ async def gerar_dias(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     
     if erros:
         msg += f"\n❌ <b>Erros ({len(erros)}):</b>\n"
-        msg += "\n".join(erros[:5]) # Mostra apenas os 5 primeiros erros se houver muitos
+        msg += "\n".join(list(set(erros))[:5]) 
 
     await update.message.reply_text(
         msg,
@@ -217,10 +228,11 @@ async def deletar_key(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "║  🗑️  <b>KEY DELETADA</b>           ║\n"
             "╚══════════════════════════╝\n\n"
             f"🔑 <b>Key:</b> <code>{key}</code>\n"
-            f"📄 <b>Resposta:</b> <code>{resp['raw']}</code>"
+            "✅ Removida com sucesso!"
         )
     else:
-        msg = f"❌ <b>Erro ao deletar key:</b>\n<code>{resp['error']}</code>"
+        status = resp["data"].get("status", "Erro desconhecido")
+        msg = f"❌ <b>Erro ao deletar key:</b>\n<code>{status}</code>"
 
     await update.message.reply_text(
         msg,
@@ -243,14 +255,13 @@ async def checar_key(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "║  🔍  <b>INFORMAÇÕES DA KEY</b>     ║\n"
             "╚══════════════════════════╝\n\n"
             f"🔑 <b>Key:</b> <code>{key}</code>\n"
+            f"📅 <b>Expira em:</b> <code>{data.get('expire_at', 'N/A')}</code>\n"
+            f"🌐 <b>IP Atual:</b> <code>{data.get('ip', 'N/A')}</code>\n"
+            f"✅ <b>Status:</b> Ativa"
         )
-        if isinstance(data, dict):
-            for k, v in data.items():
-                msg += f"📌 <b>{k}:</b> <code>{v}</code>\n"
-        else:
-            msg += f"📄 <b>Resposta:</b> <code>{resp['raw']}</code>\n"
     else:
-        msg = f"❌ <b>Erro ao checar key:</b>\n<code>{resp['error']}</code>"
+        status = resp["data"].get("status", "Key não encontrada ou erro")
+        msg = f"❌ <b>Erro ao checar key:</b>\n<code>{status}</code>"
 
     await update.message.reply_text(
         msg,
@@ -284,10 +295,11 @@ async def update_ip(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "╚══════════════════════════╝\n\n"
             f"🔑 <b>Key:</b> <code>{key}</code>\n"
             f"🌐 <b>Novo IP:</b> <code>{new_ip}</code>\n"
-            f"📄 <b>Resposta:</b> <code>{resp['raw']}</code>"
+            "✅ Atualizado com sucesso!"
         )
     else:
-        msg = f"❌ <b>Erro ao atualizar IP:</b>\n<code>{resp['error']}</code>"
+        status = resp["data"].get("status", "Erro ao atualizar")
+        msg = f"❌ <b>Erro ao atualizar IP:</b>\n<code>{status}</code>"
 
     await update.message.reply_text(
         msg,
