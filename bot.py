@@ -2,6 +2,7 @@ import logging
 import requests
 import random
 import string
+import io
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
@@ -208,13 +209,30 @@ async def gerar_dias(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         msg += f"\n❌ <b>Erros ({len(erros)}):</b>\n"
         msg += "\n".join(list(set(erros))[:5]) 
 
-    await update.message.reply_text(
-        msg,
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🏠 Voltar ao Menu", callback_data="menu_voltar")]
-        ]),
-    )
+    # --- NOVIDADE: GERAR E ENVIAR ARQUIVO TXT ---
+    if keys_geradas:
+        # Criar o conteúdo do arquivo em memória
+        txt_content = "\n".join(keys_geradas)
+        file_stream = io.BytesIO(txt_content.encode('utf-8'))
+        file_stream.name = f"keys_{dias}dias.txt"
+        
+        # Enviar o arquivo para o usuário
+        await update.message.reply_document(
+            document=file_stream,
+            caption=f"📄 Aqui estão suas {len(keys_geradas)} keys em formato .txt",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🏠 Voltar ao Menu", callback_data="menu_voltar")]
+            ])
+        )
+    else:
+        await update.message.reply_text(
+            msg,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🏠 Voltar ao Menu", callback_data="menu_voltar")]
+            ]),
+        )
+    
     return ConversationHandler.END
 
 # ─── FLUXO: DELETAR KEY ──────────────────────────────────────────────────────
