@@ -15,7 +15,7 @@ from telegram.ext import (
 BOT_TOKEN = "8778041920:AAFGhVtNSlEPOYHbGUCY-A2OeLZFqFJGHH4"
 ADMIN_ID   = 5881589518
 API_BASE   = "http://212.227.7.153:9945"
-API_KEY    = "admin"          # chave mestra do dono para autenticar na API
+API_KEY    = "43FUHF78FWIUTPULMH"  # sua chave mestra para autenticar na API
 
 # ─── ESTADOS DA CONVERSA ─────────────────────────────────────────────────────
 (
