@@ -1,5 +1,7 @@
 import logging
 import requests
+import random
+import string
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
@@ -19,7 +21,7 @@ API_KEY    = "43FUHF78FWIUTPULMH"  # sua chave mestra para autenticar na API
 
 # ─── ESTADOS DA CONVERSA ─────────────────────────────────────────────────────
 (
-    GERAR_NOME, GERAR_DIAS,
+    GERAR_QTD, GERAR_DIAS,
     DELETAR_KEY,
     CHECAR_KEY,
     UPDATE_KEY, UPDATE_IP,
@@ -45,9 +47,14 @@ def api_get(endpoint: str, params: dict) -> dict:
     except requests.exceptions.RequestException as e:
         return {"ok": False, "error": str(e)}
 
+def generate_random_key():
+    chars = string.ascii_uppercase + string.digits
+    suffix = ''.join(random.choices(chars, k=5))
+    return f"RUANPROXY-{suffix}"
+
 def menu_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔑 Gerar Key",    callback_data="menu_gerar")],
+        [InlineKeyboardButton("🔑 Gerar Keys",    callback_data="menu_gerar")],
         [InlineKeyboardButton("🗑️ Deletar Key",  callback_data="menu_deletar")],
         [InlineKeyboardButton("🔍 Checar Key",   callback_data="menu_checar")],
         [InlineKeyboardButton("🌐 Atualizar IP", callback_data="menu_update_ip")],
@@ -98,11 +105,11 @@ async def menu_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     if data == "menu_gerar":
         await query.edit_message_text(
-            "🔑 <b>GERAR KEY</b>\n\n"
-            "Digite o <b>nome</b> da key que deseja criar:",
+            "🔑 <b>GERAR KEYS</b>\n\n"
+            "Quantas chaves você deseja gerar? (Ex: 1, 5, 10):",
             parse_mode="HTML",
         )
-        return GERAR_NOME
+        return GERAR_QTD
 
     elif data == "menu_deletar":
         await query.edit_message_text(
@@ -136,11 +143,16 @@ async def menu_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return ConversationHandler.END
 
-# ─── FLUXO: GERAR KEY ────────────────────────────────────────────────────────
-async def gerar_nome(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    ctx.user_data["gerar_nome"] = update.message.text.strip()
+# ─── FLUXO: GERAR KEYS ───────────────────────────────────────────────────────
+async def gerar_qtd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    qtd_txt = update.message.text.strip()
+    if not qtd_txt.isdigit() or int(qtd_txt) <= 0:
+        await update.message.reply_text("❌ Por favor, informe um número válido maior que zero.")
+        return GERAR_QTD
+    
+    ctx.user_data["gerar_qtd"] = int(qtd_txt)
     await update.message.reply_text(
-        f"✅ Nome: <b>{ctx.user_data['gerar_nome']}</b>\n\n"
+        f"✅ Quantidade: <b>{ctx.user_data['gerar_qtd']}</b>\n\n"
         "Agora informe a <b>quantidade de dias</b> de validade:",
         parse_mode="HTML",
     )
@@ -152,27 +164,38 @@ async def gerar_dias(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Por favor, informe um número válido de dias.")
         return GERAR_DIAS
 
-    nome = ctx.user_data["gerar_nome"]
+    qtd = ctx.user_data["gerar_qtd"]
     dias = int(dias_txt)
+    
+    await update.message.reply_text(f"⏳ Gerando {qtd} chaves... aguarde.")
 
-    resp = api_get("/generate", {"key": nome, "days": dias})
+    keys_geradas = []
+    erros = []
 
-    if resp["ok"]:
-        data = resp["data"]
-        msg = (
-            "╔══════════════════════════╗\n"
-            "║  ✅  <b>KEY GERADA COM SUCESSO</b>  ║\n"
-            "╚══════════════════════════╝\n\n"
-            f"🔑 <b>Key:</b> <code>{nome}</code>\n"
-            f"📅 <b>Dias:</b> {dias}\n"
-        )
-        if isinstance(data, dict):
-            for k, v in data.items():
-                msg += f"📌 <b>{k}:</b> <code>{v}</code>\n"
+    for _ in range(qtd):
+        nome_key = generate_random_key()
+        resp = api_get("/generate", {"key": nome_key, "days": dias})
+        
+        if resp["ok"]:
+            keys_geradas.append(nome_key)
         else:
-            msg += f"📄 <b>Resposta:</b> <code>{resp['raw']}</code>\n"
-    else:
-        msg = f"❌ <b>Erro ao gerar key:</b>\n<code>{resp['error']}</code>"
+            erros.append(f"Erro ao gerar {nome_key}: {resp['error']}")
+
+    msg = (
+        "╔══════════════════════════╗\n"
+        "║  ✅  <b>GERAÇÃO CONCLUÍDA</b>      ║\n"
+        "╚══════════════════════════╝\n\n"
+        f"📅 <b>Validade:</b> {dias} dias\n\n"
+    )
+
+    if keys_geradas:
+        msg += "🔑 <b>Chaves Geradas:</b>\n"
+        for k in keys_geradas:
+            msg += f"<code>{k}</code>\n"
+    
+    if erros:
+        msg += f"\n❌ <b>Erros ({len(erros)}):</b>\n"
+        msg += "\n".join(erros[:5]) # Mostra apenas os 5 primeiros erros se houver muitos
 
     await update.message.reply_text(
         msg,
@@ -290,7 +313,7 @@ def main():
     conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(menu_callback, pattern="^menu_")],
         states={
-            GERAR_NOME:  [MessageHandler(filters.TEXT & ~filters.COMMAND, gerar_nome)],
+            GERAR_QTD:   [MessageHandler(filters.TEXT & ~filters.COMMAND, gerar_qtd)],
             GERAR_DIAS:  [MessageHandler(filters.TEXT & ~filters.COMMAND, gerar_dias)],
             DELETAR_KEY: [MessageHandler(filters.TEXT & ~filters.COMMAND, deletar_key)],
             CHECAR_KEY:  [MessageHandler(filters.TEXT & ~filters.COMMAND, checar_key)],
