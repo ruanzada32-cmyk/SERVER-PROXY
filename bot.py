@@ -18,10 +18,11 @@ from telegram.ext import (
 )
 
 # ─── CONFIGURAÇÕES ───────────────────────────────────────────────────────────
-BOT_TOKEN = "8778041920:AAFGhVtNSlEPOYHbGUCY-A2OeLZFqFJGHH4"
-ADMIN_ID   = 5881589518
-API_BASE   = "http://212.227.7.153:9945"
-API_KEY    = "43FUHF78FWIUTPULMH"  # sua chave mestra para autenticar na API
+# Usando variáveis de ambiente para segurança (Configurar na Railway)
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8778041920:AAFGhVtNSlEPOYHbGUCY-A2OeLZFqFJGHH4")
+ADMIN_ID   = int(os.getenv("ADMIN_ID", 5881589518))
+API_BASE   = os.getenv("API_BASE", "http://212.227.7.153:9945")
+API_KEY    = os.getenv("API_KEY", "43FUHF78FWIUTPULMH")
 
 # Canal/ID para Logs
 LOG_CHANNEL_ID = ADMIN_ID 
@@ -384,10 +385,13 @@ def main():
         },
         fallbacks=[CommandHandler("cancelar", cancelar), CallbackQueryHandler(menu_callback, pattern="^menu_voltar$")],
         allow_reentry=True,
+        per_message=True, # Correção para o PTBUserWarning
     )
     app.add_handler(CommandHandler("start", start))
     app.add_handler(conv)
-    app.run_polling()
+    
+    logger.info("Iniciando bot e limpando atualizações pendentes...")
+    app.run_polling(drop_pending_updates=True) # Correção para o erro de Conflict
 
 if __name__ == "__main__":
     main()
