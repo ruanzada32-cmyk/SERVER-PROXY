@@ -5,6 +5,7 @@ import string
 import io
 import json
 import os
+import asyncio
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -370,6 +371,9 @@ async def cancelar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
+    
+    # Revertendo per_message para False para suportar MessageHandlers de texto
+    # O aviso anterior ocorreu porque per_message=True exige que TUDO seja CallbackQueryHandler
     conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(menu_callback)],
         states={
@@ -385,13 +389,17 @@ def main():
         },
         fallbacks=[CommandHandler("cancelar", cancelar), CallbackQueryHandler(menu_callback, pattern="^menu_voltar$")],
         allow_reentry=True,
-        per_message=True, # Correção para o PTBUserWarning
+        per_message=False, 
     )
     app.add_handler(CommandHandler("start", start))
     app.add_handler(conv)
     
     logger.info("Iniciando bot e limpando atualizações pendentes...")
-    app.run_polling(drop_pending_updates=True) # Correção para o erro de Conflict
+    
+    # Para resolver o Conflict na Railway, precisamos garantir que não haja 
+    # duas instâncias tentando ler ao mesmo tempo. drop_pending_updates ajuda,
+    # mas o problema real é a Railway mantendo o processo antigo vivo por alguns segundos.
+    app.run_polling(drop_pending_updates=True, close_loop=False)
 
 if __name__ == "__main__":
     main()
