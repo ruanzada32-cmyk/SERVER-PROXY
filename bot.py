@@ -348,16 +348,20 @@ async def checar_key(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     
     if resp["ok"]:
         data = resp["data"]
+        # Debug: Mostrar tudo o que a API respondeu
+        raw_resp = resp.get("raw", "{}")
         msg = (
             f"🔍 <b>DETALHES DA KEY</b>\n\n"
             f"🔑 <b>Key:</b> <code>{key}</code>\n"
-            f"📅 <b>Expira em:</b> {data.get('expiry_date')}\n"
+            f"📅 <b>Expira em:</b> {data.get('expiry_date') or data.get('expiration') or data.get('expires_at') or 'Não encontrado'}\n"
             f"🌐 <b>IP Vinculado:</b> {data.get('ip') or 'Nenhum'}\n"
-            f"✅ <b>Status:</b> Ativa"
+            f"✅ <b>Status:</b> Ativa\n\n"
+            f"⚙️ <b>Debug API:</b> <code>{raw_resp}</code>"
         )
         await update.message.reply_text(msg, parse_mode="HTML", reply_markup=menu_keyboard(update.effective_user.id))
     else:
-        await update.message.reply_text(f"❌ Key não encontrada ou erro: {resp.get('error')}", reply_markup=menu_keyboard(update.effective_user.id))
+        raw_resp = resp.get("raw", "Sem resposta")
+        await update.message.reply_text(f"❌ Erro na API: {resp.get('error')}\nDebug: <code>{raw_resp}</code>", parse_mode="HTML", reply_markup=menu_keyboard(update.effective_user.id))
     
     return ConversationHandler.END
 
