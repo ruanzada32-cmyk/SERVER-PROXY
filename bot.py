@@ -377,7 +377,8 @@ async def update_ip_input(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"✅ IP da key <code>{key}</code> atualizado para <code>{new_ip}</code>!", parse_mode="HTML", reply_markup=menu_keyboard(update.effective_user.id))
         await send_log(ctx, f"🌐 IP Atualizado: Key <code>{key}</code> -> <code>{new_ip}</code>")
     else:
-        await update.message.reply_text(f"❌ Erro ao atualizar: {resp.get('error')}", reply_markup=menu_keyboard(update.effective_user.id))
+        error_msg = resp.get("error") or resp.get("data", {}).get("message") or "Erro desconhecido na API"
+        await update.message.reply_text(f"❌ Erro ao atualizar: {error_msg}", reply_markup=menu_keyboard(update.effective_user.id))
     
     return ConversationHandler.END
 
