@@ -20,7 +20,7 @@ from telegram.ext import (
 
 # ─── CONFIGURAÇÕES ───────────────────────────────────────────────────────────
 # Usando variáveis de ambiente para segurança (Configurar na Railway)
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8778041920:AAFGhVtNSlEPOYHbGUCY-A2OeLZFqFJGHH4")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8778041920:AAGTjqDBgbSawiuvHz9zwIA4JnW-AG72TK0")
 ADMIN_ID   = int(os.getenv("ADMIN_ID", 5881589518))
 API_BASE   = os.getenv("API_BASE", "http://212.227.7.153:9945")
 API_KEY    = os.getenv("API_KEY", "43FUHF78FWIUTPULMH")
@@ -300,106 +300,113 @@ async def add_reseller_id(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     return ADD_RESELLER_ID + 1 # ADD_RESELLER_SALDO
 
 async def add_reseller_saldo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    rid = ctx.user_data["new_reseller_id"]
-    saldo = update.message.text.strip()
-    if not saldo.isdigit():
-        await update.message.reply_text("❌ Saldo deve ser um número.")
-        return ADD_RESELLER_SALDO
+    saldo_txt = update.message.text.strip()
+    if not saldo_txt.isdigit():
+        await update.message.reply_text("❌ Saldo inválido.")
+        return ADD_RESELLER_ID + 1
 
+    rid = ctx.user_data["new_reseller_id"]
+    saldo = int(saldo_txt)
+    
     resellers = load_resellers()
-    resellers[rid] = {"balance": int(saldo), "added_at": datetime.now().isoformat()}
+    resellers[rid] = {"balance": saldo}
     save_resellers(resellers)
     
-    await update.message.reply_text(f"✅ Revendedor <code>{rid}</code> adicionado com {saldo} créditos!", parse_mode="HTML", reply_markup=menu_keyboard(ADMIN_ID))
-    await send_log(ctx, f"👥 Novo revendedor adicionado: <code>{rid}</code> com {saldo} créditos.")
+    await update.message.reply_text(f"✅ Revendedor {rid} adicionado com {saldo} créditos!", reply_markup=menu_keyboard(update.effective_user.id))
     return ConversationHandler.END
 
 async def rem_reseller_id(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     rid = update.message.text.strip()
     resellers = load_resellers()
+    
     if rid in resellers:
         del resellers[rid]
         save_resellers(resellers)
-        await update.message.reply_text(f"✅ Revendedor <code>{rid}</code> removido.", parse_mode="HTML", reply_markup=menu_keyboard(ADMIN_ID))
-        await send_log(ctx, f"👥 Revendedor removido: <code>{rid}</code>")
+        await update.message.reply_text(f"✅ Revendedor {rid} removido.", reply_markup=menu_keyboard(update.effective_user.id))
     else:
-        await update.message.reply_text("❌ ID não encontrado.")
+        await update.message.reply_text("❌ Revendedor não encontrado.", reply_markup=menu_keyboard(update.effective_user.id))
+    
     return ConversationHandler.END
 
-# ─── OUTROS FLUXOS (MANTIDOS) ────────────────────────────────────────────────
+# ─── FLUXO: DELETAR KEY ──────────────────────────────────────────────────────
 async def deletar_key(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     key = update.message.text.strip()
-    resp = api_get("/delete", {"generated_key": key})
+    resp = api_get("/delete", {"key": key})
+    
     if resp["ok"]:
-        await update.message.reply_text(f"✅ Key <code>{key}</code> deletada!", parse_mode="HTML", reply_markup=menu_keyboard(ADMIN_ID))
-        await send_log(ctx, f"🗑️ Key deletada: <code>{key}</code>")
+        await update.message.reply_text(f"✅ Key <code>{key}</code> deletada com sucesso!", parse_mode="HTML", reply_markup=menu_keyboard(update.effective_user.id))
+        await send_log(ctx, f"🗑️ Admin deletou a key: <code>{key}</code>")
     else:
-        await update.message.reply_text("❌ Erro ao deletar.")
+        await update.message.reply_text(f"❌ Erro ao deletar: {resp.get('error')}", reply_markup=menu_keyboard(update.effective_user.id))
+    
     return ConversationHandler.END
 
+# ─── FLUXO: CHECAR KEY ───────────────────────────────────────────────────────
 async def checar_key(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     key = update.message.text.strip()
-    resp = api_get("/check", {"generated_key": key})
+    resp = api_get("/check", {"key": key})
+    
     if resp["ok"]:
         data = resp["data"]
-        msg = f"🔍 <b>Key:</b> <code>{key}</code>\n📅 <b>Expira:</b> {data.get('expire_at')}\n🌐 <b>IP:</b> {data.get('ip')}"
+        msg = (
+            f"🔍 <b>DETALHES DA KEY</b>\n\n"
+            f"🔑 <b>Key:</b> <code>{key}</code>\n"
+            f"📅 <b>Expira em:</b> {data.get('expiry_date')}\n"
+            f"🌐 <b>IP Vinculado:</b> {data.get('ip') or 'Nenhum'}\n"
+            f"✅ <b>Status:</b> Ativa"
+        )
         await update.message.reply_text(msg, parse_mode="HTML", reply_markup=menu_keyboard(update.effective_user.id))
     else:
-        await update.message.reply_text("❌ Key não encontrada.")
+        await update.message.reply_text(f"❌ Key não encontrada ou erro: {resp.get('error')}", reply_markup=menu_keyboard(update.effective_user.id))
+    
     return ConversationHandler.END
 
-async def update_key(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+# ─── FLUXO: ATUALIZAR IP ─────────────────────────────────────────────────────
+async def update_key_input(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data["update_key"] = update.message.text.strip()
-    await update.message.reply_text("🌐 Digite o <b>novo IP</b>:")
+    await update.message.reply_text("🌐 Digite o <b>novo IP</b> para vincular:")
     return UPDATE_IP
 
-async def update_ip(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+async def update_ip_input(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     key = ctx.user_data["update_key"]
-    ip = update.message.text.strip()
-    resp = api_get("/update", {"generated_key": key, "new_ip": ip})
+    new_ip = update.message.text.strip()
+    
+    resp = api_get("/update", {"key": key, "new_ip": new_ip})
+    
     if resp["ok"]:
-        await update.message.reply_text(f"✅ IP atualizado para <code>{ip}</code>", parse_mode="HTML", reply_markup=menu_keyboard(update.effective_user.id))
-        await send_log(ctx, f"🌐 IP Atualizado: <code>{key}</code> -> <code>{ip}</code>")
+        await update.message.reply_text(f"✅ IP da key <code>{key}</code> atualizado para <code>{new_ip}</code>!", parse_mode="HTML", reply_markup=menu_keyboard(update.effective_user.id))
+        await send_log(ctx, f"🌐 IP Atualizado: Key <code>{key}</code> -> <code>{new_ip}</code>")
     else:
-        await update.message.reply_text("❌ Erro ao atualizar IP.")
-    return ConversationHandler.END
-
-async def cancelar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❌ Cancelado.", reply_markup=menu_keyboard(update.effective_user.id))
+        await update.message.reply_text(f"❌ Erro ao atualizar: {resp.get('error')}", reply_markup=menu_keyboard(update.effective_user.id))
+    
     return ConversationHandler.END
 
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
-    
-    # Revertendo per_message para False para suportar MessageHandlers de texto
-    # O aviso anterior ocorreu porque per_message=True exige que TUDO seja CallbackQueryHandler
+
     conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(menu_callback)],
         states={
-            GERAR_QTD:   [MessageHandler(filters.TEXT & ~filters.COMMAND, gerar_qtd)],
-            GERAR_DIAS:  [MessageHandler(filters.TEXT & ~filters.COMMAND, gerar_dias)],
+            GERAR_QTD: [MessageHandler(filters.TEXT & ~filters.COMMAND, gerar_qtd)],
+            GERAR_DIAS: [MessageHandler(filters.TEXT & ~filters.COMMAND, gerar_dias)],
             DELETAR_KEY: [MessageHandler(filters.TEXT & ~filters.COMMAND, deletar_key)],
-            CHECAR_KEY:  [MessageHandler(filters.TEXT & ~filters.COMMAND, checar_key)],
-            UPDATE_KEY:  [MessageHandler(filters.TEXT & ~filters.COMMAND, update_key)],
-            UPDATE_IP:   [MessageHandler(filters.TEXT & ~filters.COMMAND, update_ip)],
+            CHECAR_KEY: [MessageHandler(filters.TEXT & ~filters.COMMAND, checar_key)],
+            UPDATE_KEY: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_key_input)],
+            UPDATE_IP: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_ip_input)],
             ADD_RESELLER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_reseller_id)],
             ADD_RESELLER_SALDO: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_reseller_saldo)],
             REM_RESELLER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, rem_reseller_id)],
         },
-        fallbacks=[CommandHandler("cancelar", cancelar), CallbackQueryHandler(menu_callback, pattern="^menu_voltar$")],
-        allow_reentry=True,
-        per_message=False, 
+        fallbacks=[CommandHandler("start", start)],
+        per_message=False
     )
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(conv)
-    
-    logger.info("Iniciando bot e limpando atualizações pendentes...")
-    
-    # Para resolver o Conflict na Railway, precisamos garantir que não haja 
-    # duas instâncias tentando ler ao mesmo tempo. drop_pending_updates ajuda,
-    # mas o problema real é a Railway mantendo o processo antigo vivo por alguns segundos.
-    app.run_polling(drop_pending_updates=True, close_loop=False)
+
+    logger.info("Bot iniciado...")
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
