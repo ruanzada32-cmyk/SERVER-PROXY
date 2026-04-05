@@ -331,7 +331,7 @@ async def rem_reseller_id(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ─── FLUXO: DELETAR KEY ──────────────────────────────────────────────────────
 async def deletar_key(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     key = update.message.text.strip()
-    resp = api_get("/delete", {"key": key})
+    resp = api_get("/delete", {"generated_key": key})
     
     if resp["ok"]:
         await update.message.reply_text(f"✅ Key <code>{key}</code> deletada com sucesso!", parse_mode="HTML", reply_markup=menu_keyboard(update.effective_user.id))
@@ -344,7 +344,7 @@ async def deletar_key(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ─── FLUXO: CHECAR KEY ───────────────────────────────────────────────────────
 async def checar_key(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     key = update.message.text.strip()
-    resp = api_get("/check", {"key": key})
+    resp = api_get("/check", {"generated_key": key})
     
     if resp["ok"]:
         data = resp["data"]
@@ -371,13 +371,15 @@ async def update_ip_input(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     key = ctx.user_data["update_key"]
     new_ip = update.message.text.strip()
     
-    resp = api_get("/update", {"key": key, "new_ip": new_ip})
+    resp = api_get("/update", {"generated_key": key, "new_ip": new_ip})
     
     if resp["ok"]:
         await update.message.reply_text(f"✅ IP da key <code>{key}</code> atualizado para <code>{new_ip}</code>!", parse_mode="HTML", reply_markup=menu_keyboard(update.effective_user.id))
         await send_log(ctx, f"🌐 IP Atualizado: Key <code>{key}</code> -> <code>{new_ip}</code>")
     else:
-        error_msg = resp.get("error") or resp.get("data", {}).get("message") or "Erro desconhecido na API"
+        # Debug: Mostrar o que a API respondeu de verdade
+        raw_resp = resp.get("raw", "Sem resposta bruta")
+        error_msg = resp.get("error") or resp.get("data", {}).get("message") or f"Erro na API (Raw: {raw_resp})"
         await update.message.reply_text(f"❌ Erro ao atualizar: {error_msg}", reply_markup=menu_keyboard(update.effective_user.id))
     
     return ConversationHandler.END
