@@ -51,8 +51,11 @@ logger = logging.getLogger(__name__)
 # ─── BANCO DE DADOS LOCAL (REVENDA) ──────────────────────────────────────────
 def load_resellers():
     if os.path.exists(RESELLERS_FILE):
-        with open(RESELLERS_FILE, "r") as f:
-            return json.load(f)
+        try:
+            with open(RESELLERS_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return {}
     return {}
 
 def save_resellers(data):
@@ -126,10 +129,13 @@ BANNER = (
 
 # ─── /start ───────────────────────────────────────────────────────────────────
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    # Limpar qualquer estado pendente ao dar /start
+    ctx.user_data.clear()
+    
     user_id = update.effective_user.id
     if not is_admin(update) and not is_reseller(user_id):
         await update.message.reply_text("⛔ Acesso negado.")
-        return
+        return ConversationHandler.END
 
     msg = BANNER
     if is_reseller(user_id):
@@ -141,6 +147,7 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML",
         reply_markup=menu_keyboard(user_id),
     )
+    return ConversationHandler.END
 
 # ─── CALLBACK DO MENU ─────────────────────────────────────────────────────────
 async def menu_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -150,7 +157,7 @@ async def menu_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     if not is_admin(update) and not is_reseller(user_id):
         await query.edit_message_text("⛔ Acesso negado.")
-        return
+        return ConversationHandler.END
 
     data = query.data
 
@@ -238,7 +245,7 @@ async def gerar_qtd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     qtd_txt = update.message.text.strip()
     
     if not qtd_txt.isdigit() or int(qtd_txt) <= 0:
-        await update.message.reply_text("❌ Número inválido.")
+        await update.message.reply_text("❌ Número inválido. Digite um número positivo:")
         return GERAR_QTD
     
     qtd = int(qtd_txt)
@@ -247,7 +254,7 @@ async def gerar_qtd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
         balance = get_reseller_balance(user_id)
         if qtd > balance:
-            await update.message.reply_text(f"❌ Saldo insuficiente! Você tem apenas {balance} créditos.")
+            await update.message.reply_text(f"❌ Saldo insuficiente! Você tem apenas {balance} créditos.", reply_markup=menu_keyboard(user_id))
             return ConversationHandler.END
 
     ctx.user_data["gerar_qtd"] = qtd
@@ -258,7 +265,7 @@ async def gerar_dias(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     dias_txt = update.message.text.strip()
     if not dias_txt.isdigit():
-        await update.message.reply_text("❌ Dias inválidos.")
+        await update.message.reply_text("❌ Dias inválidos. Digite um número:")
         return GERAR_DIAS
 
     qtd = ctx.user_data["gerar_qtd"]
@@ -296,14 +303,14 @@ async def gerar_dias(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ─── FLUXO: GERENCIAR REVENDEDORES ───────────────────────────────────────────
 async def add_reseller_id(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data["new_reseller_id"] = update.message.text.strip()
-    await update.message.reply_text("💰 Qual o <b>saldo inicial</b> para este revendedor?")
-    return ADD_RESELLER_ID + 1 # ADD_RESELLER_SALDO
+    await update.message.reply_text("💰 Qual o <b>saldo inicial</b> do revendedor?")
+    return ADD_RESELLER_SALDO
 
 async def add_reseller_saldo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     saldo_txt = update.message.text.strip()
     if not saldo_txt.isdigit():
-        await update.message.reply_text("❌ Saldo inválido.")
-        return ADD_RESELLER_ID + 1
+        await update.message.reply_text("❌ Saldo inválido. Digite um número:")
+        return ADD_RESELLER_SALDO
 
     rid = ctx.user_data["new_reseller_id"]
     saldo = int(saldo_txt)
@@ -405,8 +412,12 @@ def main():
             ADD_RESELLER_SALDO: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_reseller_saldo)],
             REM_RESELLER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, rem_reseller_id)],
         },
-        fallbacks=[CommandHandler("start", start)],
-        per_message=False
+        fallbacks=[
+            CommandHandler("start", start),
+            CallbackQueryHandler(menu_callback, pattern="^menu_voltar$")
+        ],
+        per_message=False,
+        allow_reentry=True
     )
 
     app.add_handler(CommandHandler("start", start))
